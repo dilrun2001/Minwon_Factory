@@ -3,10 +3,6 @@ import json
 import requests
 from bs4 import BeautifulSoup
 
-
-##bs 4 기반으로 데이터를 질의 응답 부분을 가져오게 처리 하는 부분입니다 .
-
-
 # 🔗 목록 조회 URL
 list_url = "https://eminwon.saha.go.kr/emwp/gov/mogaha/ntis/web/emwp/cns/action/EmwpCnslWebAction.do"
 
@@ -19,10 +15,8 @@ headers = {
 # ✅ 전체 결과 저장용 리스트
 tinyllama_data = []
 
-# ✅ 페이지 반복 얼마나 진행할지 작성
-
-#데이터 디버깅 용
-for page in range(1, 276): # 2025 까지의 데이터 합습 해야 한다.
+# ✅ 페이지 반복
+for page in range(1, 2):  # 2025까지의 데이터를 크롤링  276
     print(f"📄 페이지 {page} 처리 중...")
 
     list_data = {
@@ -35,8 +29,12 @@ for page in range(1, 276): # 2025 까지의 데이터 합습 해야 한다.
         "pageSize": "20"
     }
 
-    # 오류 발생시 처리 방법
-    response = requests.post(list_url, data=list_data, headers=headers)
+    try:
+        response = requests.post(list_url, data=list_data, headers=headers)
+    except Exception as e:
+        print(f"❌ 요청 실패: {e}")
+        break
+
     if response.status_code != 200:
         print(f"❌ 페이지 {page} 요청 실패!")
         break
@@ -52,37 +50,65 @@ for page in range(1, 276): # 2025 까지의 데이터 합습 해야 한다.
         cols = row.find_all("td")
         if len(cols) >= 2:
             title = cols[1].text.strip()
-            onclick = cols[1].find("a")["href"]
+            link_tag = cols[1].find("a")
+            if not link_tag:
+                continue
+
+            onclick = link_tag.get("href", "")
             match = re.search(r"fncViewDtl\('(\d+)'", onclick)
-            if match:
-                cnsl_qna_no = match.group(1)
+            if not match:
+                continue
 
-                detail_data = {
-                    "method": "selectCnslWebShow",
-                    "jndinm": "EmwpCnslWebEJB",
-                    "methodnm": "selectCnslWebShow",
-                    "context": "NTIS",
-                    "cnsl_qna_no": cnsl_qna_no,
-                }
+            cnsl_qna_no = match.group(1)
 
+            detail_data = {
+                "method": "selectCnslWebShow",
+                "jndinm": "EmwpCnslWebEJB",
+                "methodnm": "selectCnslWebShow",
+                "context": "NTIS",
+                "cnsl_qna_no": cnsl_qna_no,
+            }
+
+            try:
                 detail_resp = requests.post(list_url, data=detail_data, headers=headers)
-                if detail_resp.status_code == 200:
-                    detail_soup = BeautifulSoup(detail_resp.text, "html.parser")
-                    tables = detail_soup.select("table.bbs-table-view")
+            except Exception as e:
+                print(f"❌ 상세페이지 요청 실패: {e}")
+                continue
 
-                    question_text = tables[0].find_all("tr")[-1].get_text(separator="\n", strip=True) if len(tables) > 0 else ""
-                    answer_text = tables[1].find_all("tr")[-1].get_text(separator="\n", strip=True) if len(tables) > 1 else ""
+            if detail_resp.status_code == 200:
+                detail_soup = BeautifulSoup(detail_resp.text, "html.parser")
+                tables = detail_soup.select("table.bbs-table-view")
 
-                    #  질문/답변만 사용, 공백 또는 형식 오류 데이터 제거
-                    if question_text.strip() and answer_text.strip():
-                        data_item = {
-                            "instruction": question_text.strip(),  # 민원 내용만!
-                            "output": answer_text.strip()          # 실제 답변만!
-                        }
-                        tinyllama_data.append(data_item)
-                        print("✅ 민원 수집:", title)
+                # 제목/작성일 추출
+                detail_title = ""
+                detail_date = ""
+                if tables:
+                    rows_detail = tables[0].find_all("tr")
+                    for tr in rows_detail:
+                        ths = tr.find_all("th")
+                        tds = tr.find_all("td")
+                        for i in range(len(ths)):
+                            th_text = ths[i].text.strip()
+                            td_text = tds[i].text.strip() if i < len(tds) else ""
+                            if th_text == "제목":
+                                detail_title = td_text
+                            elif th_text == "작성일":
+                                detail_date = td_text
 
-# ✅ JSONL 파일로 저장 (각 줄마다 하나의 JSON 객체)
+                question_text = tables[0].find_all("tr")[-1].get_text(separator="\n", strip=True) if len(tables) > 0 else ""
+                answer_text = tables[1].find_all("tr")[-1].get_text(separator="\n", strip=True) if len(tables) > 1 else ""
+
+                if question_text.strip() and answer_text.strip():
+                    data_item = {
+                        "instruction": question_text.strip(),
+                        "output": answer_text.strip()
+                    }
+                    tinyllama_data.append(data_item)
+
+                    # ✅ 제목 + 작성일 함께 출력
+                    print(f"✅ 민원 수집: {detail_title} (작성일: {detail_date})")
+
+# ✅ JSONL 파일로 저장
 with open("data.jsonl", "w", encoding="utf-8") as f:
     for item in tinyllama_data:
         json_line = json.dumps(item, ensure_ascii=False)
