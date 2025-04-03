@@ -16,7 +16,7 @@ headers = {
 tinyllama_data = []
 
 # ✅ 페이지 반복
-for page in range(1, 2):  # 2025까지의 데이터를 크롤링  276
+for page in range(1, 276):  # 2025까지의 데이터를 크롤링  276
     print(f"📄 페이지 {page} 처리 중...")
 
     list_data = {
