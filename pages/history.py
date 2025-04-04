@@ -5,9 +5,9 @@ from langchain_core.output_parsers import StrOutputParser
 import pandas as pd
 from datetime import datetime
 from menu import menu
-
+from css.util import Apply_Global_Style
 st.set_page_config(page_title = "민원히스토리", layout = "wide")
-#history_df = st.session_state.df
+Apply_Global_Style()
 menu()
 if not st.session_state.df.empty:
     st.dataframe(st.session_state.df)

@@ -5,9 +5,13 @@ from langchain_core.output_parsers import StrOutputParser
 import pandas as pd
 from datetime import datetime
 from menu import menu
-
+from setting import *
+from css.util import *
 
 st.set_page_config(page_title = "민원 입력 및 응답 생성", layout = "wide")
+
+Apply_Global_Style()
+Apply_Slidebar_Style()
 menu()
 
 @st.cache_resource
@@ -121,5 +125,5 @@ def genereate_response():
 
 if st.button("답변 생성"):
     genereate_response()
-
-
+if st.button("정보 수정"):
+    setting()
